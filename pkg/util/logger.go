@@ -72,8 +72,6 @@ func InitLogger(config *LogConfig) error {
 
 	// 创建logger
 	Logger = zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
-	defer Logger.Sync()
-
 	return nil
 }
 

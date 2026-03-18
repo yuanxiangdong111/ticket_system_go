@@ -140,7 +140,7 @@ func InitData() error {
 			TotalCount: 100,
 			UsedCount:  0,
 			StartTime:  now,
-			EndTime:    now.AddDate(0, 0, 0, 1, 0, 0), // 1小时后
+			EndTime:    now.Add(time.Hour * 1), // 1小时后
 			Status:     CouponStatusAvailable,
 		},
 	}
