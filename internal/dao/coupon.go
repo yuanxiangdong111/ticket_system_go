@@ -130,6 +130,9 @@ func (d *UserCouponDAO) GetAvailableUserCoupons(userID uint) ([]*model.UserCoupo
 	err := d.db.Preload("Coupon").
 		Where("user_id = ? AND status = ?", userID, model.UserCouponStatusUnused).
 		Find(&userCoupons).Error
+	if err != nil {
+		return nil, err
+	}
 
 	var result []*model.UserCoupon
 	for _, uc := range userCoupons {

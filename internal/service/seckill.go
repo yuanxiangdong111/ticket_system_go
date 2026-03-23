@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"ticket_system/internal/dao"
 	"ticket_system/internal/model"
+	"ticket_system/pkg/database"
 	"ticket_system/pkg/redis"
 	"ticket_system/pkg/util"
 	"time"
@@ -14,9 +15,9 @@ import (
 
 // SeckillService 秒杀服务
 type SeckillService struct {
-	orderDAO      *dao.OrderDAO
-	ticketDAO     *dao.TicketDAO
-	orderService  *OrderService
+	orderDAO     *dao.OrderDAO
+	ticketDAO    *dao.TicketDAO
+	orderService *OrderService
 }
 
 // NewSeckillService 创建秒杀服务实例
@@ -50,7 +51,7 @@ func (s *SeckillService) CreateSeckillActivity(activity *model.SeckillActivity) 
 	}
 
 	// 创建秒杀活动
-	tx := dao.NewCouponDAO().db.Begin()
+	tx := database.DB.Begin()
 	if err := tx.Create(activity).Error; err != nil {
 		tx.Rollback()
 		return err
@@ -86,7 +87,7 @@ func (s *SeckillService) preheatStock(activityID uint, stock int) {
 // GetSeckillActivityByID 根据ID获取秒杀活动
 func (s *SeckillService) GetSeckillActivityByID(activityID uint) (*model.SeckillActivity, error) {
 	var activity model.SeckillActivity
-	err := dao.NewCouponDAO().db.Preload("Ticket").First(&activity, activityID).Error
+	err := database.DB.Preload("Ticket").First(&activity, activityID).Error
 	return &activity, err
 }
 
@@ -95,7 +96,7 @@ func (s *SeckillService) ListSeckillActivities(offset, limit int) ([]*model.Seck
 	var activities []*model.SeckillActivity
 	var total int64
 
-	query := dao.NewCouponDAO().db.Preload("Ticket").Model(&model.SeckillActivity{})
+	query := database.DB.Preload("Ticket").Model(&model.SeckillActivity{})
 	query.Count(&total).Offset(offset).Limit(limit).Order("created_at DESC").Find(&activities)
 
 	return activities, total, nil
@@ -105,7 +106,7 @@ func (s *SeckillService) ListSeckillActivities(offset, limit int) ([]*model.Seck
 func (s *SeckillService) GetActiveSeckillActivities() ([]*model.SeckillActivity, error) {
 	var activities []*model.SeckillActivity
 	now := time.Now()
-	err := dao.NewCouponDAO().db.Preload("Ticket").
+	err := database.DB.Preload("Ticket").
 		Where("status = ? AND start_time <= ? AND end_time >= ?",
 			model.SeckillActivityStatusActive, now, now).Find(&activities).Error
 	return activities, err
@@ -113,7 +114,7 @@ func (s *SeckillService) GetActiveSeckillActivities() ([]*model.SeckillActivity,
 
 // UpdateSeckillActivityStatus 更新秒杀活动状态
 func (s *SeckillService) UpdateSeckillActivityStatus(activityID uint, status int8) error {
-	return dao.NewCouponDAO().db.Model(&model.SeckillActivity{}).Where("id = ?", activityID).Update("status", status).Error
+	return database.DB.Model(&model.SeckillActivity{}).Where("id = ?", activityID).Update("status", status).Error
 }
 
 // CreateSeckillOrder 创建秒杀订单
@@ -198,10 +199,10 @@ func (s *SeckillService) CreateSeckillOrder(userID uint, activityID uint, quanti
 // checkUserHasPurchased 检查用户是否已购买过该秒杀活动
 func (s *SeckillService) checkUserHasPurchased(userID uint, activityID uint) (bool, error) {
 	var count int64
-	err := dao.NewCouponDAO().db.Model(&model.OrderCoupon{}).
+	err := database.DB.Model(&model.OrderCoupon{}).
 		Joins("JOIN orders ON orders.id = order_coupons.order_id").
-		Where("orders.user_id = ? AND order_coupons.coupon_id IN (SELECT id FROM coupons WHERE type = ? AND id IN (SELECT id FROM coupons WHERE ? = ?))",
-			userID, model.CouponTypeSeckill, activityID, activityID).
+		Where("orders.user_id = ? AND order_coupons.coupon_id IN (SELECT id FROM coupons WHERE type = ? AND id = ?)",
+			userID, model.CouponTypeSeckill, activityID).
 		Count(&count).Error
 	if err != nil {
 		return false, err
@@ -211,17 +212,6 @@ func (s *SeckillService) checkUserHasPurchased(userID uint, activityID uint) (bo
 
 // createSeckillOrderAsync 异步创建秒杀订单
 func (s *SeckillService) createSeckillOrderAsync(userID uint, activity *model.SeckillActivity, quantity int) (string, error) {
-	// 创建订单请求
-	req := &CreateOrderRequest{
-		Tickets: []OrderTicket{
-			{
-				TicketID: activity.TicketID,
-				Quantity: quantity,
-			},
-		},
-		UserCouponIDs: []uint{},
-	}
-
 	// 先临时修改门票价格为秒杀价
 	ticket, err := s.ticketDAO.GetByID(activity.TicketID)
 	if err != nil {
@@ -266,7 +256,7 @@ func (s *SeckillService) createSeckillOrderAsync(userID uint, activity *model.Se
 
 // updateDatabaseStock 更新数据库中的秒杀库存
 func (s *SeckillService) updateDatabaseStock(activityID uint, quantity int) {
-	tx := dao.NewCouponDAO().db.Begin()
+	tx := database.DB.Begin()
 	if err := tx.Model(&model.SeckillStock{}).Where("activity_id = ?", activityID).
 		Update("used_stock", gorm.Expr("used_stock + ?", quantity)).Error; err != nil {
 		tx.Rollback()
@@ -283,7 +273,7 @@ func (s *SeckillService) GetSeckillStock(activityID uint) (int, error) {
 	if err != nil {
 		// 从数据库查询
 		var stock model.SeckillStock
-		if err := dao.NewCouponDAO().db.Where("activity_id = ?", activityID).First(&stock).Error; err != nil {
+		if err := database.DB.Where("activity_id = ?", activityID).First(&stock).Error; err != nil {
 			return 0, err
 		}
 		availableStock := stock.TotalStock - stock.UsedStock
@@ -305,14 +295,14 @@ func (s *SeckillService) SyncSeckillStock(activityID uint) error {
 	redisStock := util.StringToInt(stockStr)
 
 	var dbStock model.SeckillStock
-	if err := dao.NewCouponDAO().db.Where("activity_id = ?", activityID).First(&dbStock).Error; err != nil {
+	if err := database.DB.Where("activity_id = ?", activityID).First(&dbStock).Error; err != nil {
 		return err
 	}
 
 	// 计算已使用的库存
 	usedStock := dbStock.TotalStock - redisStock
 	if usedStock > dbStock.UsedStock {
-		return dao.NewCouponDAO().db.Model(&model.SeckillStock{}).Where("activity_id = ?", activityID).
+		return database.DB.Model(&model.SeckillStock{}).Where("activity_id = ?", activityID).
 			Update("used_stock", usedStock).Error
 	}
 

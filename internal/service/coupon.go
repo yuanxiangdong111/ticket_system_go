@@ -2,10 +2,8 @@ package service
 
 import (
 	"errors"
-	"math"
 	"ticket_system/internal/dao"
 	"ticket_system/internal/model"
-	"ticket_system/pkg/util"
 	"time"
 )
 
@@ -104,12 +102,16 @@ func (s *CouponService) ReceiveCoupon(userID uint, couponID uint) error {
 
 // CheckUserHasCoupon 检查用户是否已领取过优惠券
 func (s *CouponService) checkUserHasCoupon(userID, couponID uint) (bool, error) {
-	var count int64
-	err := s.userCouponDAO.db.Model(&model.UserCoupon{}).Where("user_id = ? AND coupon_id = ?", userID, couponID).Count(&count).Error
+	userCoupons, err := s.userCouponDAO.GetByUserID(userID, model.UserCouponStatusUnused)
 	if err != nil {
 		return false, err
 	}
-	return count > 0, nil
+	for _, uc := range userCoupons {
+		if uc.CouponID == couponID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // CalculateFinalPrice 计算最终价格（优惠券叠加使用）

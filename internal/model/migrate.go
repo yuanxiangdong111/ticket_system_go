@@ -1,6 +1,8 @@
 package model
 
 import (
+	"time"
+
 	"ticket_system/pkg/database"
 	"ticket_system/pkg/util"
 )

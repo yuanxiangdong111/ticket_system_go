@@ -106,25 +106,25 @@ func Sync() {
 }
 
 // WithField 添加字段
-func WithField(key string, value interface{}) *zap.Logger {
-	return Logger.With(zap.Any(key, value))
+func WithField(key string, value interface{}) zap.Field {
+	return zap.Any(key, value)
 }
 
 // WithFields 添加多个字段
-func WithFields(fields map[string]interface{}) *zap.Logger {
+func WithFields(fields map[string]interface{}) []zap.Field {
 	zapFields := make([]zap.Field, 0, len(fields))
 	for k, v := range fields {
 		zapFields = append(zapFields, zap.Any(k, v))
 	}
-	return Logger.With(zapFields...)
+	return zapFields
 }
 
 // WithError 添加错误字段
-func WithError(err error) *zap.Logger {
-	return Logger.With(zap.Error(err))
+func WithError(err error) zap.Field {
+	return zap.Error(err)
 }
 
 // WithDuration 添加耗时字段
-func WithDuration(d time.Duration) *zap.Logger {
-	return Logger.With(zap.Duration("duration", d))
+func WithDuration(d time.Duration) zap.Field {
+	return zap.Duration("duration", d)
 }

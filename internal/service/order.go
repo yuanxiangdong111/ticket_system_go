@@ -5,27 +5,30 @@ import (
 	"fmt"
 	"ticket_system/internal/dao"
 	"ticket_system/internal/model"
+	"ticket_system/pkg/database"
 	"ticket_system/pkg/util"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // OrderService 订单服务
 type OrderService struct {
-	orderDAO        *dao.OrderDAO
-	couponDAO       *dao.CouponDAO
-	userCouponDAO   *dao.UserCouponDAO
-	ticketDAO       *dao.TicketDAO
-	couponService   *CouponService
+	orderDAO      *dao.OrderDAO
+	couponDAO     *dao.CouponDAO
+	userCouponDAO *dao.UserCouponDAO
+	ticketDAO     *dao.TicketDAO
+	couponService *CouponService
 }
 
 // NewOrderService 创建订单服务实例
 func NewOrderService() *OrderService {
 	return &OrderService{
-		orderDAO:        dao.NewOrderDAO(),
-		couponDAO:       dao.NewCouponDAO(),
-		userCouponDAO:   dao.NewUserCouponDAO(),
-		ticketDAO:       dao.NewTicketDAO(),
-		couponService:   NewCouponService(),
+		orderDAO:      dao.NewOrderDAO(),
+		couponDAO:     dao.NewCouponDAO(),
+		userCouponDAO: dao.NewUserCouponDAO(),
+		ticketDAO:     dao.NewTicketDAO(),
+		couponService: NewCouponService(),
 	}
 }
 
@@ -45,7 +48,7 @@ type CreateOrderRequest struct {
 func (s *OrderService) CreateOrder(userID uint, req *CreateOrderRequest) (*model.Order, error) {
 	// 1. 验证门票并计算总金额
 	var totalAmount float64
-	var orderItems []*model.OrderItem
+	var orderItems []model.OrderItem
 	var ticketIDs []uint
 	var quantityChanges []int
 
@@ -64,7 +67,7 @@ func (s *OrderService) CreateOrder(userID uint, req *CreateOrderRequest) (*model
 		itemAmount := ticket.Price * float64(ticketReq.Quantity)
 		totalAmount += itemAmount
 
-		orderItem := &model.OrderItem{
+		orderItem := model.OrderItem{
 			TicketID:   ticket.ID,
 			Quantity:   ticketReq.Quantity,
 			Price:      ticket.Price,
@@ -114,7 +117,7 @@ func (s *OrderService) CreateOrder(userID uint, req *CreateOrderRequest) (*model
 	}
 
 	// 5. 使用事务创建订单和相关数据
-	tx := s.orderDAO.db.Begin()
+	tx := database.DB.Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
@@ -137,9 +140,9 @@ func (s *OrderService) CreateOrder(userID uint, req *CreateOrderRequest) (*model
 	}
 
 	// 创建订单详情
-	for _, item := range orderItems {
-		item.OrderID = order.ID
-		if err := tx.Create(item).Error; err != nil {
+	for i := range orderItems {
+		orderItems[i].OrderID = order.ID
+		if err := tx.Create(&orderItems[i]).Error; err != nil {
 			tx.Rollback()
 			// 回滚库存
 			for i := range ticketIDs {
@@ -231,7 +234,7 @@ func (s *OrderService) PayOrder(orderID uint) error {
 	}
 
 	now := time.Now()
-	return s.orderDAO.db.Model(&model.Order{}).Where("id = ?", orderID).
+	return database.DB.Model(&model.Order{}).Where("id = ?", orderID).
 		Updates(map[string]interface{}{
 			"status":   model.OrderStatusPaid,
 			"pay_time": now,
@@ -250,7 +253,7 @@ func (s *OrderService) CancelOrder(orderID uint) error {
 	}
 
 	// 使用事务
-	tx := s.orderDAO.db.Begin()
+	tx := database.DB.Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()

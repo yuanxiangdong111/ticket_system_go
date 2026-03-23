@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"ticket_system/internal/model"
 	"ticket_system/internal/service"
+	"ticket_system/pkg/util"
 
 	"github.com/gin-gonic/gin"
 )
@@ -43,7 +44,7 @@ func (c *SeckillController) CreateSeckillActivity(ctx *gin.Context) {
 		return
 	}
 
-	startTime, err := service.HandleTimeParsing(req.StartTime)
+	startTime, err := util.ParseTime(req.StartTime)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"code":    400,
@@ -52,7 +53,7 @@ func (c *SeckillController) CreateSeckillActivity(ctx *gin.Context) {
 		return
 	}
 
-	endTime, err := service.HandleTimeParsing(req.EndTime)
+	endTime, err := util.ParseTime(req.EndTime)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"code":    400,
